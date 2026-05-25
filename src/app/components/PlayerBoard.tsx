@@ -10,6 +10,7 @@ interface PlayerBoardProps {
   currentRow: number;
   isActive: boolean;
   hasWon: boolean;
+  hideLetters?: boolean;
 }
 
 export function PlayerBoard({
@@ -21,6 +22,7 @@ export function PlayerBoard({
   currentRow,
   isActive,
   hasWon,
+  hideLetters = false,
 }: PlayerBoardProps) {
   return (
     <div className="relative">
@@ -62,6 +64,7 @@ export function PlayerBoard({
           currentGuess={currentGuess}
           letterStates={letterStates}
           currentRow={currentRow}
+          hideLetters={hideLetters}
         />
 
         {!isActive && !hasWon && (

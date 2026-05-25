@@ -11,7 +11,10 @@ interface GameModalProps {
   winner?: number;
   onClose: () => void;
   onPlayAgain: () => void;
+  onExitToLobby?: () => void;
   onShare: () => void;
+  showShare?: boolean;
+  hideClose?: boolean;
 }
 
 export function GameModal({
@@ -22,7 +25,10 @@ export function GameModal({
   winner,
   onClose,
   onPlayAgain,
+  onExitToLobby,
   onShare,
+  showShare = true,
+  hideClose = false,
 }: GameModalProps) {
   useEffect(() => {
     if (isOpen && isWin) {
@@ -68,7 +74,7 @@ export function GameModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
-            onClick={onClose}
+            onClick={hideClose ? undefined : onClose}
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -78,12 +84,14 @@ export function GameModal({
           >
             <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
               <div className="relative">
-                <button
-                  onClick={onClose}
-                  className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
-                >
-                  <XIcon className="w-5 h-5 text-slate-600" />
-                </button>
+                {!hideClose && (
+                  <button
+                    onClick={onClose}
+                    className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
+                  >
+                    <XIcon className="w-5 h-5 text-slate-600" />
+                  </button>
+                )}
 
                 <div
                   className={`p-8 text-center ${
@@ -105,14 +113,14 @@ export function GameModal({
                     )}
                   </motion.div>
                   <h2 className="text-3xl font-bold text-white mb-2">
-                    {isWin ? 'Parabéns!' : 'Quase lá!'}
+                    {isWin ? 'Parabéns!' : 'Fim de jogo'}
                   </h2>
                   <p className="text-white/90 text-lg">
-                    {isWin
-                      ? winner
-                        ? `Jogador ${winner} venceu em ${attempts} ${attempts === 1 ? 'tentativa' : 'tentativas'}!`
-                        : `Conseguiste em ${attempts} ${attempts === 1 ? 'tentativa' : 'tentativas'}!`
-                      : 'Tenta novamente!'}
+                    {winner
+                      ? `Jogador ${winner} venceu em ${attempts} ${attempts === 1 ? 'tentativa' : 'tentativas'}!`
+                      : isWin
+                        ? `Conseguiste em ${attempts} ${attempts === 1 ? 'tentativa' : 'tentativas'}!`
+                        : 'Tenta novamente!'}
                   </p>
                 </div>
 
@@ -130,15 +138,28 @@ export function GameModal({
                       className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-700 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
                     >
                       <RotateCcw className="w-5 h-5" />
-                      Jogar Novamente
+                      Rematch
                     </button>
-                    <button
-                      onClick={onShare}
-                      className="w-full py-4 bg-slate-200 text-slate-900 font-semibold rounded-xl hover:bg-slate-300 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Share2 className="w-5 h-5" />
-                      Partilhar Resultado
-                    </button>
+
+                    {onExitToLobby && (
+                      <button
+                        onClick={onExitToLobby}
+                        className="w-full py-4 bg-slate-200 text-slate-900 font-semibold rounded-xl hover:bg-slate-300 transition-all flex items-center justify-center gap-2"
+                      >
+                        <XIcon className="w-5 h-5" />
+                        Sair para o Lobby
+                      </button>
+                    )}
+
+                    {showShare && (
+                      <button
+                        onClick={onShare}
+                        className="w-full py-4 bg-slate-200 text-slate-900 font-semibold rounded-xl hover:bg-slate-300 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Share2 className="w-5 h-5" />
+                        Partilhar Resultado
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

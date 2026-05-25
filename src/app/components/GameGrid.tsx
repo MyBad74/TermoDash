@@ -51,9 +51,10 @@ interface GameGridProps {
   currentGuess: string;
   letterStates: LetterState[][];
   currentRow: number;
+  hideLetters?: boolean;
 }
 
-export function GameGrid({ guesses, currentGuess, letterStates, currentRow }: GameGridProps) {
+export function GameGrid({ guesses, currentGuess, letterStates, currentRow, hideLetters = false }: GameGridProps) {
   const rows = 6;
   const cols = 5;
 
@@ -73,10 +74,12 @@ export function GameGrid({ guesses, currentGuess, letterStates, currentRow }: Ga
               state = letter ? 'current' : 'empty';
             }
 
+            const shownLetter = hideLetters ? '' : letter;
+
             return (
               <Cell
                 key={colIndex}
-                letter={letter}
+                letter={shownLetter}
                 state={state}
                 index={colIndex}
               />
