@@ -7,6 +7,7 @@ import type { LetterState as GridLetterState } from './components/GameGrid';
 import { Header } from './components/Header';
 import { Lobby } from './components/Lobby';
 import { GameRoom } from './components/GameRoom';
+// import env
 
 export type KeyStateValue = 'correct' | 'present' | 'absent' | 'unused';
 
@@ -57,7 +58,9 @@ export default function App() {
 
   useEffect(() => {
     let didCleanup = false;
-    const newSocket = io('http://localhost:3001');
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
+    const newSocket = io(socketUrl);
+
     setSocket(newSocket);
 
     const handleRoomJoin = ({ roomId: newRoomId, mode: newMode }: { roomId: string; mode: RoomMode }) => {
