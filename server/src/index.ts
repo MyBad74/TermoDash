@@ -56,6 +56,26 @@ interface Room {
 }
 
 const rooms: Record<string, Room> = {};
+const roomCleanupTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+const cancelRoomCleanup = (roomId: string) => {
+  const timer = roomCleanupTimers[roomId];
+  if (!timer) return;
+  clearTimeout(timer);
+  delete roomCleanupTimers[roomId];
+};
+
+const scheduleRoomCleanup = (roomId: string, delayMs = 30_000) => {
+  cancelRoomCleanup(roomId);
+  roomCleanupTimers[roomId] = setTimeout(() => {
+    const room = rooms[roomId];
+    if (room && room.players.length === 0) {
+      delete rooms[roomId];
+      console.log(`Room ${roomId} removed after ${delayMs}ms with no players.`);
+    }
+    delete roomCleanupTimers[roomId];
+  }, delayMs);
+};
 
 const WORDS_FILE_PATH = path.join(__dirname, '..', 'words.txt');
 
@@ -230,36 +250,45 @@ io.on('connection', (socket) => {
   socket.on('create-room', ({ mode }: { mode: 'dash' | 'coop' }) => {
     const roomId = Math.random().toString(36).substring(2, 8);
     const targetWord = getRandomTargetWord();
-    
+
+    const hostPlayerState = { ...createInitialPlayerState(), id: socket.id, gameStatus: 'waiting' as const };
+
     rooms[roomId] = {
-      players: [], // Os jogadores são adicionados ao entrar
+      players: [socket.id],
       mode: mode,
       hostId: socket.id,
       gameState: {
-        player1: { ...createInitialPlayerState(), id: null },
+        player1: hostPlayerState,
         player2: { ...createInitialPlayerState(), id: null },
         activePlayerId: null,
         targetWord: targetWord,
       },
     };
+
+    socket.join(roomId);
+    cancelRoomCleanup(roomId);
+
     console.log(`Room ${roomId} (mode: ${mode}) created by ${socket.id}`);
-    // O criador também se junta à sala
     socket.emit('room-created', { roomId, mode });
+    io.to(roomId).emit('game-state-update', rooms[roomId].gameState);
   });
 
   socket.on('join-room', (roomId: string) => {
-    const room = rooms[roomId];
+    const normalizedRoomId = roomId.trim().toLowerCase();
+    const room = rooms[normalizedRoomId];
     if (!room) {
       socket.emit('room-not-found');
       return;
     }
+
+    cancelRoomCleanup(normalizedRoomId);
 
     const isPlayer1 = room.gameState.player1.id === null || room.gameState.player1.id === socket.id;
     const isPlayer2 = room.gameState.player2.id === null || room.gameState.player2.id === socket.id;
 
     if (room.players.includes(socket.id)) {
        // Já está na sala, apenas envia o estado atual
-       io.to(roomId).emit('game-state-update', room.gameState);
+       io.to(normalizedRoomId).emit('game-state-update', room.gameState);
        return;
     }
 
@@ -268,7 +297,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    socket.join(roomId);
+    socket.join(normalizedRoomId);
     room.players.push(socket.id);
 
     const someoneWon = room.gameState.player1.gameStatus === 'won' || room.gameState.player2.gameStatus === 'won';
@@ -310,9 +339,9 @@ io.on('connection', (socket) => {
       room.gameState.activePlayerId = socket.id;
     }
 
-    console.log(`${socket.id} joined room ${roomId}`);
-    io.to(roomId).emit('game-state-update', room.gameState);
-    socket.emit('joined-room', { roomId, mode: room.mode, players: room.players });
+    console.log(`${socket.id} joined room ${normalizedRoomId}`);
+    io.to(normalizedRoomId).emit('game-state-update', room.gameState);
+    socket.emit('joined-room', { roomId: normalizedRoomId, mode: room.mode, players: room.players });
   });
 
   socket.on('leave-room', (roomId: string) => {
@@ -353,9 +382,13 @@ io.on('connection', (socket) => {
     }
 
     if (room.players.length === 0) {
-      delete rooms[roomId];
-      console.log(`Room ${roomId} is now empty and has been removed.`);
+      scheduleRoomCleanup(roomId);
+      console.log(`Room ${roomId} is empty. Waiting before cleanup.`);
       return;
+    }
+
+    if (room.hostId === socket.id) {
+      room.hostId = room.players[0];
     }
 
     io.to(roomId).emit('game-state-update', room.gameState);
@@ -487,12 +520,6 @@ io.on('connection', (socket) => {
     console.log('user disconnected:', socket.id);
     for (const roomId in rooms) {
       const room = rooms[roomId];
-      if (room.hostId === socket.id) {
-        io.to(roomId).emit('room-closed');
-        io.in(roomId).socketsLeave(roomId);
-        delete rooms[roomId];
-        break;
-      }
       const playerIndex = room.players.indexOf(socket.id);
       if (playerIndex !== -1) {
         room.players.splice(playerIndex, 1);
@@ -518,9 +545,13 @@ io.on('connection', (socket) => {
         }
 
         if (room.players.length === 0) {
-          delete rooms[roomId];
-          console.log(`Room ${roomId} is now empty and has been removed.`);
+          scheduleRoomCleanup(roomId);
+          console.log(`Room ${roomId} is empty after disconnect. Waiting before cleanup.`);
         } else {
+          cancelRoomCleanup(roomId);
+          if (room.hostId === socket.id) {
+            room.hostId = room.players[0];
+          }
           io.to(roomId).emit('game-state-update', room.gameState);
           socket.to(roomId).emit('player-left', socket.id);
         }
