@@ -168,7 +168,7 @@ export default function App() {
                   onLeaveToLobby={leaveToLobby}
                 />
               ) : (
-                <div>A ligar ao servidor...</div>
+                <div>A ligar ao servidor. . .</div>
               )
             }
           />
