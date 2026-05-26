@@ -87,6 +87,14 @@ export default function App() {
       navigate('/');
     });
 
+    newSocket.on('room-closed', () => {
+      toast.error('O criador saiu. A sala foi encerrada.');
+      setRoomId(null);
+      setMode(null);
+      setGameState(createEmptyGameState());
+      navigate('/');
+    });
+
     const handleDisconnect = () => {
       if (didCleanup) return;
       setRoomId(null);
@@ -103,6 +111,7 @@ export default function App() {
       newSocket.off('joined-room', handleRoomJoin);
       newSocket.off('game-state-update');
       newSocket.off('invalid-word');
+      newSocket.off('room-closed');
       newSocket.off('disconnect', handleDisconnect);
       newSocket.disconnect();
     };

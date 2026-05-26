@@ -27,13 +27,13 @@ export function PlayerBoard({
   return (
     <div className="relative">
       <div
-        className={`rounded-3xl p-6 transition-all duration-300 ${
+        className={`rounded-3xl p-4 transition-all duration-300 ${
           isActive
             ? 'bg-white shadow-xl border-2 border-emerald-500 scale-[1.02]'
             : 'bg-white/50 shadow-md border border-slate-200'
         }`}
       >
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${

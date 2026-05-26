@@ -34,9 +34,9 @@ function Cell({ letter, state, index }: CellProps) {
       }
       transition={{ duration: 0.6, delay: index * 0.1 }}
       className={`
-        w-14 h-14 border-2 rounded-xl
+        w-12 h-12 border-2 rounded-lg
         flex items-center justify-center
-        font-bold text-2xl uppercase
+        font-bold text-xl uppercase
         transition-all duration-200
         ${getStateStyles()}
       `}

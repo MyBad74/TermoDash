@@ -41,9 +41,9 @@ export function Keyboard({ onKeyPress, onDelete, onEnter, keyStates }: KeyboardP
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-2">
+    <div className="w-full max-w-2xl mx-auto px-1">
       {rows.map((row, rowIndex) => (
-        <div key={rowIndex} className="flex gap-1.5 mb-1.5 justify-center">
+        <div key={rowIndex} className="flex gap-1 mb-1 justify-center">
           {row.map((key) => {
             const isWide = key === 'ENTER' || key === 'DELETE';
 
@@ -53,7 +53,7 @@ export function Keyboard({ onKeyPress, onDelete, onEnter, keyStates }: KeyboardP
                 onClick={() => handleClick(key)}
                 whileTap={{ scale: 0.95 }}
                 className={`
-                  ${isWide ? 'px-4' : 'w-9'} h-14
+                  ${isWide ? 'px-3' : 'w-8'} h-12
                   rounded-lg border-2 font-semibold text-sm
                   transition-all duration-150
                   ${getKeyStyle(key)}

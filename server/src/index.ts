@@ -42,6 +42,7 @@ interface Room {
   players: string[];
   mode: 'dash' | 'coop';
   gameState: GameState;
+  hostId: string;
 }
 
 const rooms: Record<string, Room> = {};
@@ -223,6 +224,7 @@ io.on('connection', (socket) => {
     rooms[roomId] = {
       players: [], // Os jogadores são adicionados ao entrar
       mode: mode,
+      hostId: socket.id,
       gameState: {
         player1: { ...createInitialPlayerState(), id: null },
         player2: { ...createInitialPlayerState(), id: null },
@@ -260,13 +262,37 @@ io.on('connection', (socket) => {
     room.players.push(socket.id);
 
     const someoneWon = room.gameState.player1.gameStatus === 'won' || room.gameState.player2.gameStatus === 'won';
+    const hasTwoPlayers = room.players.length >= 2;
 
     if (isPlayer1) {
       room.gameState.player1.id = socket.id;
-      room.gameState.player1.gameStatus = room.mode === 'dash' && someoneWon ? 'lost' : 'playing';
+      room.gameState.player1.gameStatus =
+        room.mode === 'dash' && someoneWon
+          ? 'lost'
+          : hasTwoPlayers
+            ? 'playing'
+            : 'waiting';
     } else if (isPlayer2) {
       room.gameState.player2.id = socket.id;
-      room.gameState.player2.gameStatus = room.mode === 'dash' && someoneWon ? 'lost' : 'playing';
+      room.gameState.player2.gameStatus =
+        room.mode === 'dash' && someoneWon
+          ? 'lost'
+          : hasTwoPlayers
+            ? 'playing'
+            : 'waiting';
+    }
+
+    if (hasTwoPlayers) {
+      if (room.gameState.player1.id && room.gameState.player1.gameStatus === 'waiting') {
+        room.gameState.player1.gameStatus = 'playing';
+      }
+      if (room.gameState.player2.id && room.gameState.player2.gameStatus === 'waiting') {
+        room.gameState.player2.gameStatus = 'playing';
+      }
+
+      if (room.mode === 'coop') {
+        room.gameState.player2.keyStates = { ...room.gameState.player1.keyStates };
+      }
     }
     
     // Define o primeiro jogador a entrar como o jogador ativo (apenas no modo Co-op)
@@ -282,6 +308,13 @@ io.on('connection', (socket) => {
   socket.on('leave-room', (roomId: string) => {
     const room = rooms[roomId];
     if (!room) return;
+
+    if (room.hostId === socket.id) {
+      io.to(roomId).emit('room-closed');
+      io.in(roomId).socketsLeave(roomId);
+      delete rooms[roomId];
+      return;
+    }
 
     const playerIndex = room.players.indexOf(socket.id);
     if (playerIndex === -1) return;
@@ -300,6 +333,15 @@ io.on('connection', (socket) => {
       ensureActivePlayer(room);
     }
 
+    if (room.players.length < 2) {
+      if (room.gameState.player1.id && room.gameState.player1.gameStatus === 'playing') {
+        room.gameState.player1.gameStatus = 'waiting';
+      }
+      if (room.gameState.player2.id && room.gameState.player2.gameStatus === 'playing') {
+        room.gameState.player2.gameStatus = 'waiting';
+      }
+    }
+
     if (room.players.length === 0) {
       delete rooms[roomId];
       console.log(`Room ${roomId} is now empty and has been removed.`);
@@ -315,9 +357,11 @@ io.on('connection', (socket) => {
     if (!room) return;
     if (!room.players.includes(socket.id)) return;
 
+    const canStart = room.players.length >= 2;
+
     const resetFor = (playerId: string | null): PlayerState => {
       const next = { ...createInitialPlayerState(), id: playerId };
-      if (playerId) next.gameStatus = 'playing';
+      if (playerId) next.gameStatus = canStart ? 'playing' : 'waiting';
       return next;
     };
 
@@ -335,6 +379,7 @@ io.on('connection', (socket) => {
     const { roomId, action, key } = data;
     const room = rooms[roomId];
     if (!room) return;
+    if (room.players.length < 2) return;
 
     const playerState =
       room.gameState.player1.id === socket.id
@@ -344,6 +389,8 @@ io.on('connection', (socket) => {
           : null;
 
     if (!playerState) return;
+
+    const sharedState = room.mode === 'coop' ? room.gameState.player1 : playerState;
 
     // No Co-op joga por turnos; no Dash ambos podem jogar quando quiserem.
     if (room.mode === 'coop') {
@@ -356,14 +403,14 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (playerState.gameStatus !== 'playing') return;
+    if (sharedState.gameStatus !== 'playing') return;
 
-    if (action === 'key-press' && key && playerState.currentGuess.length < 5) {
-      playerState.currentGuess += key;
+    if (action === 'key-press' && key && sharedState.currentGuess.length < 5) {
+      sharedState.currentGuess += key;
     } else if (action === 'delete') {
-      playerState.currentGuess = playerState.currentGuess.slice(0, -1);
-    } else if (action === 'enter' && playerState.currentGuess.length === 5) {
-      const guess = playerState.currentGuess;
+      sharedState.currentGuess = sharedState.currentGuess.slice(0, -1);
+    } else if (action === 'enter' && sharedState.currentGuess.length === 5) {
+      const guess = sharedState.currentGuess;
       const targetWord = room.gameState.targetWord;
 
       const canonicalGuess = findCanonicalWord(guess);
@@ -382,17 +429,17 @@ io.on('connection', (socket) => {
       const displayedGuess = displayedGuessLetters.join('');
 
       const newLetterStates = checkGuess(canonicalGuess, targetWord);
-      const newKeyStates = getUpdatedKeyStates(canonicalGuess, targetWord, playerState.keyStates);
+      const newKeyStates = getUpdatedKeyStates(canonicalGuess, targetWord, sharedState.keyStates);
       
-      playerState.guesses.push(displayedGuess);
-      playerState.letterStates.push(newLetterStates);
-      playerState.keyStates = newKeyStates;
-      playerState.currentRow++;
-      playerState.currentGuess = '';
+      sharedState.guesses.push(displayedGuess);
+      sharedState.letterStates.push(newLetterStates);
+      sharedState.keyStates = newKeyStates;
+      sharedState.currentRow++;
+      sharedState.currentGuess = '';
 
       const isCorrect = normalizeWord(guess) === normalizeWord(room.gameState.targetWord);
       if (isCorrect) {
-        playerState.gameStatus = 'won';
+        sharedState.gameStatus = 'won';
 
         // No Dash, o primeiro a acertar termina o jogo.
         if (room.mode === 'dash') {
@@ -402,8 +449,8 @@ io.on('connection', (socket) => {
             if (otherState.gameStatus === 'playing') otherState.gameStatus = 'lost';
           }
         }
-      } else if (playerState.currentRow >= 6) {
-        playerState.gameStatus = 'lost';
+      } else if (sharedState.currentRow >= 6) {
+        sharedState.gameStatus = 'lost';
       }
 
       // Troca de vez apenas no modo Co-op (joga vez a vez)
@@ -413,6 +460,16 @@ io.on('connection', (socket) => {
       }
     }
 
+    if (room.mode === 'coop') {
+      const mirrorState = room.gameState.player2;
+      mirrorState.guesses = [...sharedState.guesses];
+      mirrorState.currentGuess = sharedState.currentGuess;
+      mirrorState.currentRow = sharedState.currentRow;
+      mirrorState.letterStates = sharedState.letterStates.map((row) => [...row]);
+      mirrorState.keyStates = { ...sharedState.keyStates };
+      mirrorState.gameStatus = sharedState.gameStatus;
+    }
+
     io.to(roomId).emit('game-state-update', room.gameState);
   });
 
@@ -420,6 +477,12 @@ io.on('connection', (socket) => {
     console.log('user disconnected:', socket.id);
     for (const roomId in rooms) {
       const room = rooms[roomId];
+      if (room.hostId === socket.id) {
+        io.to(roomId).emit('room-closed');
+        io.in(roomId).socketsLeave(roomId);
+        delete rooms[roomId];
+        break;
+      }
       const playerIndex = room.players.indexOf(socket.id);
       if (playerIndex !== -1) {
         room.players.splice(playerIndex, 1);
@@ -433,6 +496,15 @@ io.on('connection', (socket) => {
 
         if (room.gameState.activePlayerId === socket.id) {
           ensureActivePlayer(room);
+        }
+
+        if (room.players.length < 2) {
+          if (room.gameState.player1.id && room.gameState.player1.gameStatus === 'playing') {
+            room.gameState.player1.gameStatus = 'waiting';
+          }
+          if (room.gameState.player2.id && room.gameState.player2.gameStatus === 'playing') {
+            room.gameState.player2.gameStatus = 'waiting';
+          }
         }
 
         if (room.players.length === 0) {

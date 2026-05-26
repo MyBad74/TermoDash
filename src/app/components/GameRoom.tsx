@@ -6,6 +6,7 @@ import { Socket } from 'socket.io-client';
 import { PlayerBoard } from './PlayerBoard';
 import { Keyboard } from './Keyboard';
 import type { GameState } from '../App';
+import { toast } from 'sonner';
 
 interface GameRoomProps {
   socket: Socket;
@@ -48,18 +49,28 @@ export function GameRoom({
   const isDash = mode === 'dash';
   const isCoop = mode === 'coop';
 
-  const player1IsActive = isDash ? Boolean(player1.id) : Boolean(player1.id && player1.id === activePlayerId);
-  const player2IsActive = isDash ? Boolean(player2.id) : Boolean(player2.id && player2.id === activePlayerId);
+  const player1IsActive = isDash
+    ? Boolean(player1.id && player1.gameStatus === 'playing')
+    : Boolean(player1.id && player1.id === activePlayerId);
+  const player2IsActive = isDash
+    ? Boolean(player2.id && player2.gameStatus === 'playing')
+    : Boolean(player2.id && player2.id === activePlayerId);
 
   const myPlayerKeyStates = myId === player1.id ? player1.keyStates : myId === player2.id ? player2.keyStates : {};
   const myPlayerState = myId === player1.id ? player1 : myId === player2.id ? player2 : null;
+  const sharedCoopState = isCoop ? player1 : null;
+  const coopBoardState = isCoop ? player1 : null;
+  const effectiveKeyStates = isCoop ? player1.keyStates : myPlayerKeyStates;
 
   const isParticipant = myId === player1.id || myId === player2.id;
   const canPlay =
     isDash
-      ? isParticipant && (myPlayerState?.gameStatus ?? 'waiting') === 'playing'
+      ? isParticipant && bothPlayersJoined && (myPlayerState?.gameStatus ?? 'waiting') === 'playing'
       : isCoop
-        ? isParticipant && myId === activePlayerId
+        ? isParticipant &&
+          bothPlayersJoined &&
+          myId === activePlayerId &&
+          (sharedCoopState?.gameStatus ?? 'waiting') === 'playing'
         : false;
 
   const iAmPlayer1 = Boolean(myId && myId === player1.id);
@@ -87,10 +98,35 @@ export function GameRoom({
   }, [winner, player1.currentRow, player2.currentRow]);
 
   const [endModalOpen, setEndModalOpen] = useState(false);
+  const [endSnapshot, setEndSnapshot] = useState<{
+    word: string;
+    attempts: number;
+    winner?: number;
+    isWin: boolean;
+  } | null>(null);
+
   useEffect(() => {
-    if (isGameOver) setEndModalOpen(true);
-    else setEndModalOpen(false);
-  }, [isGameOver]);
+    if (isGameOver) {
+      setEndSnapshot({
+        word: gameState.targetWord,
+        attempts: winner ? winnerAttempts : myPlayerState?.currentRow ?? 0,
+        winner,
+        isWin: (myPlayerState?.gameStatus ?? 'waiting') === 'won',
+      });
+      setEndModalOpen(true);
+      return;
+    }
+
+    setEndModalOpen(false);
+    setEndSnapshot(null);
+  }, [
+    isGameOver,
+    gameState.targetWord,
+    winner,
+    winnerAttempts,
+    myPlayerState?.currentRow,
+    myPlayerState?.gameStatus,
+  ]);
 
   const safeOnKeyPress = useCallback(
     (key: string) => {
@@ -109,6 +145,23 @@ export function GameRoom({
     if (!canPlay) return;
     onEnter();
   }, [canPlay, onEnter]);
+
+  const handleCopyRoomLink = useCallback(async () => {
+    if (!roomId) return;
+    const url = `${window.location.origin}/room/${roomId}`;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        toast.success('Link copiado!');
+        return;
+      }
+    } catch {
+      // fallback to prompt
+    }
+
+    window.prompt('Copia o link:', url);
+  }, [roomId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -153,55 +206,74 @@ export function GameRoom({
   };
 
   return (
-    <div className="flex flex-col items-center p-4">
+    <div className="flex flex-col items-center px-4 pb-4 pt-2">
       <div className="w-full max-w-5xl flex items-center justify-between gap-3">
-        <h2 className="text-2xl font-bold mb-1">Sala: {roomId}</h2>
-        <Button variant="outline" onClick={onLeaveToLobby}>Sair para o Lobby</Button>
+        <h2 className="text-xl font-bold">Sala: {roomId}</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleCopyRoomLink}>Copiar link</Button>
+          <Button variant="outline" onClick={onLeaveToLobby}>Sair para o Lobby</Button>
+        </div>
       </div>
-      <div className="text-sm text-muted-foreground mb-4">
+      <div className="text-xs text-muted-foreground mb-2">
         {mode ? `Modo: ${mode === 'dash' ? 'Dash' : 'Co-op'}` : 'A carregar modo...'}
         {!bothPlayersJoined ? ' · A aguardar outro jogador...' : ''}
         {isCoop && bothPlayersJoined && activePlayerId
           ? ` · Vez de: ${activePlayerId === player1.id ? 'Jogador 1' : activePlayerId === player2.id ? 'Jogador 2' : '...'} `
           : ''}
       </div>
-      <div className="flex gap-8 mt-8">
-        <PlayerBoard
-          playerName="Jogador 1"
-          playerNumber={1}
-          guesses={player1.guesses}
-          currentGuess={player1.currentGuess}
-          letterStates={player1.letterStates}
-          currentRow={player1.currentRow}
-          isActive={player1IsActive}
-          hasWon={player1.gameStatus === 'won'}
-          hideLetters={hidePlayer1Letters}
-        />
-        <PlayerBoard
-          playerName="Jogador 2"
-          playerNumber={2}
-          guesses={player2.guesses}
-          currentGuess={player2.currentGuess}
-          letterStates={player2.letterStates}
-          currentRow={player2.currentRow}
-          isActive={player2IsActive}
-          hasWon={player2.gameStatus === 'won'}
-          hideLetters={hidePlayer2Letters}
-        />
+      <div className="flex gap-6 mt-3 mb-5">
+        {isCoop ? (
+          <PlayerBoard
+            playerName="Co-op"
+            playerNumber={1}
+            guesses={coopBoardState?.guesses ?? []}
+            currentGuess={coopBoardState?.currentGuess ?? ''}
+            letterStates={coopBoardState?.letterStates ?? []}
+            currentRow={coopBoardState?.currentRow ?? 0}
+            isActive={bothPlayersJoined}
+            hasWon={(coopBoardState?.gameStatus ?? 'waiting') === 'won'}
+            hideLetters={false}
+          />
+        ) : (
+          <>
+            <PlayerBoard
+              playerName="Jogador 1"
+              playerNumber={1}
+              guesses={player1.guesses}
+              currentGuess={player1.currentGuess}
+              letterStates={player1.letterStates}
+              currentRow={player1.currentRow}
+              isActive={player1IsActive}
+              hasWon={player1.gameStatus === 'won'}
+              hideLetters={hidePlayer1Letters}
+            />
+            <PlayerBoard
+              playerName="Jogador 2"
+              playerNumber={2}
+              guesses={player2.guesses}
+              currentGuess={player2.currentGuess}
+              letterStates={player2.letterStates}
+              currentRow={player2.currentRow}
+              isActive={player2IsActive}
+              hasWon={player2.gameStatus === 'won'}
+              hideLetters={hidePlayer2Letters}
+            />
+          </>
+        )}
       </div>
       <Keyboard
         onKeyPress={safeOnKeyPress}
         onDelete={safeOnDelete}
         onEnter={safeOnEnter}
-        keyStates={myPlayerKeyStates}
+        keyStates={effectiveKeyStates}
       />
 
       <GameModal
         isOpen={endModalOpen}
-        isWin={myPlayerState?.gameStatus === 'won'}
-        word={gameState.targetWord}
-        attempts={winner ? winnerAttempts : myPlayerState?.currentRow ?? 0}
-        winner={winner}
+        isWin={endSnapshot?.isWin ?? false}
+        word={endSnapshot?.word ?? ''}
+        attempts={endSnapshot?.attempts ?? 0}
+        winner={endSnapshot?.winner}
         onClose={() => {}}
         onPlayAgain={handleRematch}
         onExitToLobby={onLeaveToLobby}
