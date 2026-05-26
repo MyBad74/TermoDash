@@ -10,11 +10,20 @@ app.use(cors());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  transports: ['polling', 'websocket'],
+  transports: ['polling'],
+  allowUpgrades: false,
   cors: {
     origin: "*", // Em produção, altere para o URL do seu frontend
     methods: ["GET", "POST"]
   }
+});
+
+io.engine.on('connection_error', (err) => {
+  console.warn('engine connection_error', {
+    code: err.code,
+    message: err.message,
+    context: err.context,
+  });
 });
 
 // Tipos partilhados entre frontend e backend

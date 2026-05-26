@@ -61,7 +61,8 @@ export default function App() {
     let didCleanup = false;
     const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
     const newSocket = io(socketUrl, {
-      transports: ['polling', 'websocket'],
+      transports: ['polling'],
+      upgrade: false,
     });
 
     setSocket(newSocket);
