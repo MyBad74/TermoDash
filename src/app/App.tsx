@@ -52,6 +52,7 @@ export default function App() {
   const navigate = useNavigate();
 
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [mode, setMode] = useState<RoomMode | null>(null);
   const [gameState, setGameState] = useState<GameState>(() => createEmptyGameState());
@@ -68,6 +69,13 @@ export default function App() {
       setMode(newMode);
       navigate(`/room/${newRoomId}`);
     };
+
+    newSocket.on('connect', () => setSocketConnected(true));
+    newSocket.on('disconnect', () => setSocketConnected(false));
+    newSocket.on('connect_error', () => {
+      setSocketConnected(false);
+      toast.error('Sem ligacao ao servidor de jogo.');
+    });
 
     newSocket.on('room-created', handleRoomJoin);
     newSocket.on('joined-room', handleRoomJoin);
@@ -107,6 +115,9 @@ export default function App() {
 
     return () => {
       didCleanup = true;
+      newSocket.off('connect');
+      newSocket.off('disconnect');
+      newSocket.off('connect_error');
       newSocket.off('room-created', handleRoomJoin);
       newSocket.off('joined-room', handleRoomJoin);
       newSocket.off('game-state-update');
@@ -153,7 +164,10 @@ export default function App() {
       />
       <main className="flex-1">
         <Routes>
-          <Route path="/" element={socket ? <Lobby socket={socket} /> : <div>A ligar ao servidor...</div>} />
+          <Route
+            path="/"
+            element={socket ? <Lobby socket={socket} isConnected={socketConnected} /> : <div>A ligar ao servidor...</div>}
+          />
           <Route
             path="/room/:roomId"
             element={

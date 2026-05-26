@@ -6,9 +6,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 interface LobbyProps {
   socket: Socket;
+  isConnected: boolean;
 }
 
-export function Lobby({ socket }: LobbyProps) {
+export function Lobby({ socket, isConnected }: LobbyProps) {
   const [joinRoomId, setJoinRoomId] = useState('');
 
   const handleCreateRoom = (mode: 'dash' | 'coop') => {
@@ -30,8 +31,12 @@ export function Lobby({ socket }: LobbyProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Button onClick={() => handleCreateRoom('dash')}>Criar Sala Dash</Button>
-            <Button onClick={() => handleCreateRoom('coop')}>Criar Sala Co-op</Button>
+            <Button onClick={() => handleCreateRoom('dash')} disabled={!isConnected}>
+              Criar Sala Dash
+            </Button>
+            <Button onClick={() => handleCreateRoom('coop')} disabled={!isConnected}>
+              Criar Sala Co-op
+            </Button>
           </div>
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -49,9 +54,15 @@ export function Lobby({ socket }: LobbyProps) {
               placeholder="ID da Sala" 
               value={joinRoomId}
               onChange={(e) => setJoinRoomId(e.target.value)}
+              disabled={!isConnected}
             />
-            <Button onClick={handleJoinRoom}>Juntar-se</Button>
+            <Button onClick={handleJoinRoom} disabled={!isConnected}>Juntar-se</Button>
           </div>
+          {!isConnected && (
+            <div className="text-xs text-muted-foreground">
+              Liga o servidor de jogo e configura o URL no Vercel.
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
