@@ -60,7 +60,9 @@ export default function App() {
   useEffect(() => {
     let didCleanup = false;
     const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
-    const newSocket = io(socketUrl);
+    const newSocket = io(socketUrl, {
+      transports: ['polling', 'websocket'],
+    });
 
     setSocket(newSocket);
 

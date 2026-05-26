@@ -50,6 +50,8 @@ export function Lobby({ socket, isConnected }: LobbyProps) {
           </div>
           <div className="flex w-full max-w-sm items-center space-x-2">
             <Input 
+              id="room-id"
+              name="room-id"
               type="text" 
               placeholder="ID da Sala" 
               value={joinRoomId}

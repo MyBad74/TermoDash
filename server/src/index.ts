@@ -10,6 +10,7 @@ app.use(cors());
 
 const server = http.createServer(app);
 const io = new Server(server, {
+  transports: ['polling', 'websocket'],
   cors: {
     origin: "*", // Em produção, altere para o URL do seu frontend
     methods: ["GET", "POST"]
