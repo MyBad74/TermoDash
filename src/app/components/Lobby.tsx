@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 
 interface LobbyProps {
   socket: Socket;
@@ -11,9 +11,10 @@ interface LobbyProps {
 
 export function Lobby({ socket, isConnected }: LobbyProps) {
   const [joinRoomId, setJoinRoomId] = useState('');
+  const [maxPlayers, setMaxPlayers] = useState(2);
 
   const handleCreateRoom = (mode: 'dash' | 'coop') => {
-    socket.emit('create-room', { mode });
+    socket.emit('create-room', { mode, maxPlayers });
   };
 
   const handleJoinRoom = () => {
@@ -30,6 +31,23 @@ export function Lobby({ socket, isConnected }: LobbyProps) {
           <CardDescription>Crie uma sala ou junte-se a uma existente.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Nº de jogadores</div>
+            <Input
+              type="number"
+              min={2}
+              max={8}
+              value={maxPlayers}
+              onChange={(e) => {
+                const n = Math.floor(Number(e.target.value));
+                if (!Number.isFinite(n)) return;
+                setMaxPlayers(Math.max(2, Math.min(8, n)));
+              }}
+              disabled={!isConnected}
+            />
+            <div className="text-xs text-muted-foreground">A sala só começa quando todos entrarem.</div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Button onClick={() => handleCreateRoom('dash')} disabled={!isConnected}>
               Criar Sala Dash

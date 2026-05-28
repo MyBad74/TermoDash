@@ -43,59 +43,59 @@ export function GameRoom({
 
   const myId = socket.id ?? null;
 
-  const { player1, player2, activePlayerId } = gameState;
-  const bothPlayersJoined = Boolean(player1.id && player2.id);
+  const { players, activePlayerId, maxPlayers, sharedCoopState } = gameState;
+
+  const joinedPlayers = useMemo(() => players.filter((p) => Boolean(p.id)), [players]);
+  const joinedCount = joinedPlayers.length;
+  const roomReady = maxPlayers > 0 && joinedCount >= maxPlayers;
 
   const isDash = mode === 'dash';
   const isCoop = mode === 'coop';
 
-  const player1IsActive = isDash
-    ? Boolean(player1.id && player1.gameStatus === 'playing')
-    : Boolean(player1.id && player1.id === activePlayerId);
-  const player2IsActive = isDash
-    ? Boolean(player2.id && player2.gameStatus === 'playing')
-    : Boolean(player2.id && player2.id === activePlayerId);
+  const myPlayerState = useMemo(
+    () => (myId ? players.find((p) => p.id === myId) ?? null : null),
+    [myId, players]
+  );
 
-  const myPlayerKeyStates = myId === player1.id ? player1.keyStates : myId === player2.id ? player2.keyStates : {};
-  const myPlayerState = myId === player1.id ? player1 : myId === player2.id ? player2 : null;
-  const sharedCoopState = isCoop ? player1 : null;
-  const coopBoardState = isCoop ? player1 : null;
-  const effectiveKeyStates = isCoop ? player1.keyStates : myPlayerKeyStates;
+  const isParticipant = Boolean(myPlayerState);
+  const effectiveKeyStates = isCoop ? sharedCoopState?.keyStates ?? {} : myPlayerState?.keyStates ?? {};
 
-  const isParticipant = myId === player1.id || myId === player2.id;
+  const activePlayerNumber = useMemo(() => {
+    if (!activePlayerId) return null;
+    const idx = players.findIndex((p) => p.id === activePlayerId);
+    return idx >= 0 ? idx + 1 : null;
+  }, [players, activePlayerId]);
+
   const canPlay =
     isDash
-      ? isParticipant && bothPlayersJoined && (myPlayerState?.gameStatus ?? 'waiting') === 'playing'
+      ? isParticipant && roomReady && (myPlayerState?.gameStatus ?? 'waiting') === 'playing'
       : isCoop
         ? isParticipant &&
-          bothPlayersJoined &&
+          roomReady &&
           myId === activePlayerId &&
           (sharedCoopState?.gameStatus ?? 'waiting') === 'playing'
         : false;
 
-  const iAmPlayer1 = Boolean(myId && myId === player1.id);
-  const iAmPlayer2 = Boolean(myId && myId === player2.id);
-
-  const hidePlayer1Letters = !iAmPlayer1; // adversário/espectador
-  const hidePlayer2Letters = !iAmPlayer2; // adversário/espectador
-
   const winner = useMemo(() => {
-    if (player1.gameStatus === 'won') return 1;
-    if (player2.gameStatus === 'won') return 2;
-    return undefined;
-  }, [player1.gameStatus, player2.gameStatus]);
+    const idx = players.findIndex((p) => p.gameStatus === 'won');
+    return idx >= 0 ? idx + 1 : undefined;
+  }, [players]);
 
   const isGameOver = useMemo(() => {
+    if (isCoop) {
+      const s = sharedCoopState?.gameStatus;
+      return s === 'won' || s === 'lost';
+    }
+
     const someoneWon = Boolean(winner);
-    const bothLost = player1.gameStatus === 'lost' && player2.gameStatus === 'lost';
-    return someoneWon || bothLost;
-  }, [winner, player1.gameStatus, player2.gameStatus]);
+    const allLost = joinedPlayers.length > 0 && joinedPlayers.every((p) => p.gameStatus === 'lost');
+    return someoneWon || allLost;
+  }, [isCoop, sharedCoopState?.gameStatus, winner, joinedPlayers]);
 
   const winnerAttempts = useMemo(() => {
-    if (winner === 1) return player1.currentRow;
-    if (winner === 2) return player2.currentRow;
-    return 0;
-  }, [winner, player1.currentRow, player2.currentRow]);
+    if (!winner) return 0;
+    return players[winner - 1]?.currentRow ?? 0;
+  }, [winner, players]);
 
   const [endModalOpen, setEndModalOpen] = useState(false);
   const [endSnapshot, setEndSnapshot] = useState<{
@@ -107,11 +107,21 @@ export function GameRoom({
 
   useEffect(() => {
     if (isGameOver) {
+      const attempts = isCoop
+        ? sharedCoopState?.currentRow ?? 0
+        : winner
+          ? winnerAttempts
+          : myPlayerState?.currentRow ?? 0;
+
+      const isWin = isCoop
+        ? (sharedCoopState?.gameStatus ?? 'waiting') === 'won' && isParticipant
+        : (myPlayerState?.gameStatus ?? 'waiting') === 'won';
+
       setEndSnapshot({
         word: gameState.targetWord,
-        attempts: winner ? winnerAttempts : myPlayerState?.currentRow ?? 0,
-        winner,
-        isWin: (myPlayerState?.gameStatus ?? 'waiting') === 'won',
+        attempts,
+        winner: isCoop ? undefined : winner,
+        isWin,
       });
       setEndModalOpen(true);
       return;
@@ -126,6 +136,10 @@ export function GameRoom({
     winnerAttempts,
     myPlayerState?.currentRow,
     myPlayerState?.gameStatus,
+    isCoop,
+    sharedCoopState?.currentRow,
+    sharedCoopState?.gameStatus,
+    isParticipant,
   ]);
 
   const safeOnKeyPress = useCallback(
@@ -216,48 +230,45 @@ export function GameRoom({
       </div>
       <div className="text-xs text-muted-foreground mb-2">
         {mode ? `Modo: ${mode === 'dash' ? 'Dash' : 'Co-op'}` : 'A carregar modo...'}
-        {!bothPlayersJoined ? ' · A aguardar outro jogador...' : ''}
-        {isCoop && bothPlayersJoined && activePlayerId
-          ? ` · Vez de: ${activePlayerId === player1.id ? 'Jogador 1' : activePlayerId === player2.id ? 'Jogador 2' : '...'} `
+        {!roomReady ? ` · A aguardar jogadores (${joinedCount}/${maxPlayers})...` : ''}
+        {isCoop && roomReady && activePlayerId
+          ? ` · Vez de: ${activePlayerNumber ? `Jogador ${activePlayerNumber}` : '...'} `
           : ''}
       </div>
-      <div className="flex gap-6 mt-3 mb-5">
+      <div className={isCoop ? 'flex gap-6 mt-3 mb-5' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-3 mb-5'}>
         {isCoop ? (
           <PlayerBoard
             playerName="Co-op"
             playerNumber={1}
-            guesses={coopBoardState?.guesses ?? []}
-            currentGuess={coopBoardState?.currentGuess ?? ''}
-            letterStates={coopBoardState?.letterStates ?? []}
-            currentRow={coopBoardState?.currentRow ?? 0}
-            isActive={bothPlayersJoined}
-            hasWon={(coopBoardState?.gameStatus ?? 'waiting') === 'won'}
+            guesses={sharedCoopState?.guesses ?? []}
+            currentGuess={sharedCoopState?.currentGuess ?? ''}
+            letterStates={sharedCoopState?.letterStates ?? []}
+            currentRow={sharedCoopState?.currentRow ?? 0}
+            isActive={roomReady}
+            hasWon={(sharedCoopState?.gameStatus ?? 'waiting') === 'won'}
             hideLetters={false}
           />
         ) : (
           <>
-            <PlayerBoard
-              playerName="Jogador 1"
-              playerNumber={1}
-              guesses={player1.guesses}
-              currentGuess={player1.currentGuess}
-              letterStates={player1.letterStates}
-              currentRow={player1.currentRow}
-              isActive={player1IsActive}
-              hasWon={player1.gameStatus === 'won'}
-              hideLetters={hidePlayer1Letters}
-            />
-            <PlayerBoard
-              playerName="Jogador 2"
-              playerNumber={2}
-              guesses={player2.guesses}
-              currentGuess={player2.currentGuess}
-              letterStates={player2.letterStates}
-              currentRow={player2.currentRow}
-              isActive={player2IsActive}
-              hasWon={player2.gameStatus === 'won'}
-              hideLetters={hidePlayer2Letters}
-            />
+            {players.map((p, idx) => {
+              const playerNumber = idx + 1;
+              const isMe = Boolean(myId && p.id === myId);
+
+              return (
+                <PlayerBoard
+                  key={idx}
+                  playerName={`Jogador ${playerNumber}`}
+                  playerNumber={playerNumber}
+                  guesses={p.guesses}
+                  currentGuess={p.currentGuess}
+                  letterStates={p.letterStates}
+                  currentRow={p.currentRow}
+                  isActive={Boolean(p.id && p.gameStatus === 'playing')}
+                  hasWon={p.gameStatus === 'won'}
+                  hideLetters={!isMe}
+                />
+              );
+            })}
           </>
         )}
       </div>

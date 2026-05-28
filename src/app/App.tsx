@@ -21,11 +21,14 @@ export interface PlayerState {
   gameStatus: 'playing' | 'won' | 'lost' | 'waiting';
 }
 
+export type SharedCoopState = Omit<PlayerState, 'id'>;
+
 export interface GameState {
-  player1: PlayerState;
-  player2: PlayerState;
+  players: PlayerState[];
+  sharedCoopState?: SharedCoopState;
   activePlayerId: string | null;
   targetWord: string;
+  maxPlayers: number;
 }
 
 const createEmptyPlayerState = (): PlayerState => ({
@@ -39,10 +42,11 @@ const createEmptyPlayerState = (): PlayerState => ({
 });
 
 const createEmptyGameState = (): GameState => ({
-  player1: createEmptyPlayerState(),
-  player2: createEmptyPlayerState(),
+  players: [createEmptyPlayerState(), createEmptyPlayerState()],
+  sharedCoopState: undefined,
   activePlayerId: null,
   targetWord: '',
+  maxPlayers: 2,
 });
 
 type RoomMode = 'dash' | 'coop';
