@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { GameModal } from './GameModal';
 import { Socket } from 'socket.io-client';
 import { PlayerBoard } from './PlayerBoard';
@@ -104,6 +105,10 @@ export function GameRoom({
     winner?: number;
     isWin: boolean;
   } | null>(null);
+  const [newWord, setNewWord] = useState('');
+  const [isSavingWord, setIsSavingWord] = useState(false);
+  const [wordMessage, setWordMessage] = useState<string | null>(null);
+  const [wordMessageType, setWordMessageType] = useState<'success' | 'error' | null>(null);
 
   useEffect(() => {
     if (isGameOver) {
@@ -219,6 +224,27 @@ export function GameRoom({
     setEndModalOpen(false);
   };
 
+  const handleAddWord = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (!roomId || !newWord.trim() || isSavingWord) return;
+
+      setIsSavingWord(true);
+      setWordMessage(null);
+
+      socket.emit('add-word', { roomId, word: newWord }, (response: { ok: boolean; message: string }) => {
+        setIsSavingWord(false);
+        setWordMessage(response.message);
+        setWordMessageType(response.ok ? 'success' : 'error');
+
+        if (response.ok) {
+          setNewWord('');
+        }
+      });
+    },
+    [roomId, newWord, isSavingWord, socket]
+  );
+
   return (
     <div className="flex flex-col items-center px-4 pb-4 pt-2">
       <div className="w-full max-w-5xl flex items-center justify-between gap-3">
@@ -235,42 +261,72 @@ export function GameRoom({
           ? ` · Vez de: ${activePlayerNumber ? `Jogador ${activePlayerNumber}` : '...'} `
           : ''}
       </div>
-      <div className={isCoop ? 'flex gap-6 mt-3 mb-5' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-3 mb-5'}>
-        {isCoop ? (
-          <PlayerBoard
-            playerName="Co-op"
-            playerNumber={1}
-            guesses={sharedCoopState?.guesses ?? []}
-            currentGuess={sharedCoopState?.currentGuess ?? ''}
-            letterStates={sharedCoopState?.letterStates ?? []}
-            currentRow={sharedCoopState?.currentRow ?? 0}
-            isActive={roomReady}
-            hasWon={(sharedCoopState?.gameStatus ?? 'waiting') === 'won'}
-            hideLetters={false}
-          />
-        ) : (
-          <>
-            {players.map((p, idx) => {
-              const playerNumber = idx + 1;
-              const isMe = Boolean(myId && p.id === myId);
+      <div className="w-full max-w-7xl flex flex-col lg:flex-row items-start gap-6 mt-3 mb-5">
+        <div className={isCoop ? 'flex-1' : 'flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'}>
+          {isCoop ? (
+            <PlayerBoard
+              playerName="Co-op"
+              playerNumber={1}
+              guesses={sharedCoopState?.guesses ?? []}
+              currentGuess={sharedCoopState?.currentGuess ?? ''}
+              letterStates={sharedCoopState?.letterStates ?? []}
+              currentRow={sharedCoopState?.currentRow ?? 0}
+              isActive={roomReady}
+              hasWon={(sharedCoopState?.gameStatus ?? 'waiting') === 'won'}
+              hideLetters={false}
+            />
+          ) : (
+            <>
+              {players.map((p, idx) => {
+                const playerNumber = idx + 1;
+                const isMe = Boolean(myId && p.id === myId);
 
-              return (
-                <PlayerBoard
-                  key={idx}
-                  playerName={`Jogador ${playerNumber}`}
-                  playerNumber={playerNumber}
-                  guesses={p.guesses}
-                  currentGuess={p.currentGuess}
-                  letterStates={p.letterStates}
-                  currentRow={p.currentRow}
-                  isActive={Boolean(p.id && p.gameStatus === 'playing')}
-                  hasWon={p.gameStatus === 'won'}
-                  hideLetters={!isMe}
-                />
-              );
-            })}
-          </>
-        )}
+                return (
+                  <PlayerBoard
+                    key={idx}
+                    playerName={`Jogador ${playerNumber}`}
+                    playerNumber={playerNumber}
+                    guesses={p.guesses}
+                    currentGuess={p.currentGuess}
+                    letterStates={p.letterStates}
+                    currentRow={p.currentRow}
+                    isActive={Boolean(p.id && p.gameStatus === 'playing')}
+                    hasWon={p.gameStatus === 'won'}
+                    hideLetters={!isMe}
+                  />
+                );
+              })}
+            </>
+          )}
+        </div>
+
+        <form
+          onSubmit={handleAddWord}
+          className="w-full lg:w-[320px] rounded-3xl border border-slate-200 bg-white/90 shadow-lg p-4 space-y-3"
+        >
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Adicionar palavra</h3>
+            <p className="text-xs text-slate-500">A palavra é guardada no `words.txt` do servidor.</p>
+          </div>
+
+          <Input
+            value={newWord}
+            onChange={(e) => setNewWord(e.target.value)}
+            maxLength={5}
+            placeholder="Escreve 5 letras"
+            disabled={isSavingWord}
+            autoComplete="off"
+            spellCheck={false}
+          />
+
+          <Button type="submit" className="w-full" disabled={isSavingWord || !newWord.trim()}>
+            {isSavingWord ? 'A guardar...' : 'Adicionar ao dicionário'}
+          </Button>
+
+          <div className={`min-h-5 text-xs ${wordMessageType === 'success' ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {wordMessage ?? 'Apenas palavras com 5 letras são aceites.'}
+          </div>
+        </form>
       </div>
       <Keyboard
         onKeyPress={safeOnKeyPress}

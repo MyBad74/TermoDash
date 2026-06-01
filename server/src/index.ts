@@ -99,6 +99,34 @@ const loadWordList = (): string[] => {
   }
 };
 
+const normalizeAddedWord = (word: string) => {
+  const trimmed = word.trim();
+  if (!/^[A-Za-zÀ-ÿÇç]{5}$/.test(trimmed)) return null;
+  return trimmed.toLocaleUpperCase('pt-PT');
+};
+
+const appendWordToFile = (word: string) => {
+  const canonicalWord = normalizeAddedWord(word);
+  if (!canonicalWord) {
+    return { ok: false as const, message: 'A palavra tem de ter exatamente 5 letras.' };
+  }
+
+  const existingWords = loadWordList();
+  const normalizedCanonicalWord = normalizeWord(canonicalWord);
+  const alreadyExists = existingWords.some((existingWord) => normalizeWord(existingWord) === normalizedCanonicalWord);
+  if (alreadyExists) {
+    return { ok: false as const, message: 'A palavra já existe na lista.' };
+  }
+
+  try {
+    fs.appendFileSync(WORDS_FILE_PATH, `${canonicalWord}\n`, 'utf8');
+    return { ok: true as const, message: 'Palavra adicionada com sucesso.' };
+  } catch (error) {
+    console.warn('Failed to append word to words.txt:', error);
+    return { ok: false as const, message: 'Não foi possível guardar a palavra.' };
+  }
+};
+
 const getRandomTargetWord = () => {
   const words = loadWordList();
   if (words.length === 0) return 'TERMO';
@@ -301,6 +329,25 @@ io.on('connection', (socket) => {
     console.log(`Room ${roomId} (mode: ${mode}, maxPlayers: ${desiredMaxPlayers}) created by ${socket.id}`);
     socket.emit('room-created', { roomId, mode });
     io.to(roomId).emit('game-state-update', rooms[roomId].gameState);
+  });
+
+  socket.on('add-word', (data: { roomId: string; word: string }, ack?: (response: { ok: boolean; message: string }) => void) => {
+    const roomId = data?.roomId?.trim().toLowerCase();
+    const word = data?.word ?? '';
+    const room = rooms[roomId];
+
+    if (!room) {
+      ack?.({ ok: false, message: 'Sala não encontrada.' });
+      return;
+    }
+
+    if (!room.players.includes(socket.id)) {
+      ack?.({ ok: false, message: 'Entra na sala antes de adicionar palavras.' });
+      return;
+    }
+
+    const result = appendWordToFile(word);
+    ack?.(result);
   });
 
   socket.on('join-room', (roomId: string) => {
